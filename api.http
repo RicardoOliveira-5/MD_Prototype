@@ -1,0 +1,16 @@
+POST http://localhost:8080/api/demo/sobrecarga
+Content-Type: application/json
+
+{
+    "paragemId": "DEMO_1"
+    }
+
+
+###
+POST http://localhost:8080/api/demo/evento
+Content-Type: application/json
+
+{
+    "nome": "KNICKS GAME",
+    "paragemId": "DEMO_3"
+}

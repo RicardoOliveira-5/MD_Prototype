@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transport Graph — Dashboard</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;600&display=swap');
+
+        :root {
+            --bg:       #0a0e1a;
+            --surface:  #111827;
+            --border:   #1e2d45;
+            --accent:   #00e5ff;
+            --green:    #00ff88;
+            --orange:   #ff8c00;
+            --red:      #ff3b5c;
+            --text:     #e2e8f0;
+            --muted:    #4a6080;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ── HEADER ── */
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.2rem 2rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-family: 'Space Mono', monospace;
+            font-size: 1rem;
+            color: var(--accent);
+            letter-spacing: 0.05em;
+        }
+
+        .logo span { color: var(--muted); }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--muted);
+            font-family: 'Space Mono', monospace;
+        }
+
+        .dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.3; }
+        }
+
+        /* ── LAYOUT ── */
+        main { padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem; }
+
+        /* ── STAT CARDS ── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.2rem 1.4rem;
+            position: relative;
+            overflow: hidden;
+            transition: border-color .2s;
+        }
+
+        .stat-card:hover { border-color: var(--accent); }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: var(--accent);
+            opacity: 0.5;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--muted);
+            font-family: 'Space Mono', monospace;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 600;
+            line-height: 1;
+            color: var(--accent);
+            font-family: 'Space Mono', monospace;
+        }
+
+        .stat-sub {
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 0.3rem;
+        }
+
+        /* ── OCCUPANCY BAR ── */
+        .occ-bar-wrap { margin-top: 0.6rem; }
+
+        .occ-bar-bg {
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .occ-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width .8s ease, background .4s;
+        }
+
+        /* ── SECTIONS ── */
+        .section-title {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--muted);
+            margin-bottom: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .section-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        /* ── PARAGENS TABLE ── */
+        .paragens-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 0.8rem;
+        }
+
+        .paragem-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem 1.2rem;
+            transition: border-color .2s, transform .2s;
+        }
+
+        .paragem-card:hover { transform: translateY(-2px); border-color: var(--muted); }
+
+        .paragem-card.sobrecarga { border-color: var(--red); }
+        .paragem-card.aviso      { border-color: var(--orange); }
+
+        .paragem-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.6rem;
+        }
+
+        .paragem-nome { font-weight: 600; font-size: 0.9rem; }
+
+        .paragem-zona {
+            font-size: 0.65rem;
+            color: var(--muted);
+            font-family: 'Space Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .paragem-pct {
+            font-family: 'Space Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        .pct-ok     { color: var(--green); }
+        .pct-aviso  { color: var(--orange); }
+        .pct-danger { color: var(--red); }
+
+        .paragem-nums {
+            font-size: 0.72rem;
+            color: var(--muted);
+            margin-top: 0.3rem;
+            font-family: 'Space Mono', monospace;
+        }
+
+        /* ── ROTAS ── */
+        .rotas-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+        .rota-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.8rem 1.2rem;
+        }
+
+        .rota-tipo {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.65rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            background: var(--border);
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            min-width: 48px;
+            text-align: center;
+        }
+
+        .rota-nome { font-weight: 600; flex: 1; }
+
+        .rota-badge {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.7rem;
+            border-radius: 20px;
+            font-family: 'Space Mono', monospace;
+        }
+
+        .badge-ativa    { background: rgba(0,255,136,.1); color: var(--green); border: 1px solid var(--green); }
+        .badge-inativa  { background: rgba(255,59,92,.1); color: var(--red);   border: 1px solid var(--red); }
+
+        /* ── LIGAÇÕES TEMP ── */
+        .ligacoes-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+        .ligacao-row {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            background: rgba(0,229,255,.04);
+            border: 1px solid rgba(0,229,255,.2);
+            border-radius: 8px;
+            padding: 0.8rem 1.2rem;
+            font-size: 0.85rem;
+        }
+
+        .ligacao-arrow { color: var(--accent); font-family: 'Space Mono', monospace; }
+
+        .ligacao-motivo { color: var(--muted); font-size: 0.72rem; flex: 1; }
+
+        .ligacao-validade {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--orange);
+        }
+
+        .empty-state {
+            color: var(--muted);
+            font-size: 0.8rem;
+            font-family: 'Space Mono', monospace;
+            padding: 1rem 0;
+        }
+
+        /* ── REFRESH ── */
+        .refresh-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+
+        .last-update {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--muted);
+        }
+
+        .btn-refresh {
+            background: transparent;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            font-family: 'Space Mono', monospace;
+            font-size: 0.75rem;
+            padding: 0.4rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background .2s;
+        }
+
+        .btn-refresh:hover { background: rgba(0,229,255,.1); }
+
+        .loading { color: var(--muted); font-family: 'Space Mono', monospace; font-size: 0.8rem; }
+
+        /* ── SOBRECARGA ALERT ── */
+        .alert-bar {
+            display: none;
+            background: rgba(255,59,92,.08);
+            border: 1px solid var(--red);
+            border-radius: 10px;
+            padding: 0.9rem 1.4rem;
+            font-size: 0.85rem;
+            color: var(--red);
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .alert-bar.visible { display: flex; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo">TRANSPORT<span>/</span>GRAPH <span>// Lisboa</span></div>
+    <div class="status-pill">
+        <div class="dot"></div>
+        <span id="status-text">A ligar...</span>
+    </div>
+</header>
+
+<main>
+
+    <!-- ALERT -->
+    <div class="alert-bar" id="alert-bar">
+        ⚠ <span id="alert-msg"></span>
+    </div>
+
+    <!-- STATS -->
+    <div>
+        <div class="section-title">Estado Global</div>
+        <div class="stats-grid" id="stats-grid">
+            <div class="loading">A carregar...</div>
+        </div>
+    </div>
+
+    <!-- PARAGENS -->
+    <div>
+        <div class="section-title">Paragens</div>
+        <div class="paragens-grid" id="paragens-grid">
+            <div class="loading">A carregar...</div>
+        </div>
+    </div>
+
+    <!-- ROTAS -->
+    <div>
+        <div class="section-title">Rotas</div>
+        <div class="rotas-list" id="rotas-list">
+            <div class="loading">A carregar...</div>
+        </div>
+    </div>
+
+    <!-- LIGAÇÕES TEMPORÁRIAS -->
+    <div>
+        <div class="section-title">Ligações Temporárias Ativas</div>
+        <div class="ligacoes-list" id="ligacoes-list">
+            <div class="loading">A carregar...</div>
+        </div>
+    </div>
+
+    <!-- REFRESH -->
+    <div class="refresh-row">
+        <span class="last-update" id="last-update">—</span>
+        <button class="btn-refresh" onclick="fetchAll()">↻ Atualizar</button>
+    </div>
+
+</main>
+
+<script>
+    const API = 'http://localhost:8080/api';
+
+    function pctColor(pct) {
+        if (pct >= 80) return 'pct-danger';
+        if (pct >= 60) return 'pct-aviso';
+        return 'pct-ok';
+    }
+
+    function barColor(pct) {
+        if (pct >= 80) return 'var(--red)';
+        if (pct >= 60) return 'var(--orange)';
+        return 'var(--green)';
+    }
+
+    function cardClass(pct) {
+        if (pct >= 80) return 'sobrecarga';
+        if (pct >= 60) return 'aviso';
+        return '';
+    }
+
+    async function fetchEstado() {
+        const res  = await fetch(`${API}/rede/estado`);
+        const data = await res.json();
+
+        const pct = data.ocupacaoGlobalPercent;
+
+        document.getElementById('stats-grid').innerHTML = `
+      <div class="stat-card">
+        <div class="stat-label">Paragens</div>
+        <div class="stat-value">${data.totalParagens}</div>
+        <div class="stat-sub">na rede</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Rotas Ativas</div>
+        <div class="stat-value">${data.rotasAtivas}<span style="font-size:1rem;color:var(--muted)">/${data.totalRotas}</span></div>
+        <div class="stat-sub">em operação</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Passageiros</div>
+        <div class="stat-value">${data.passageirosAtual.toLocaleString()}</div>
+        <div class="stat-sub">de ${data.capacidadeTotal.toLocaleString()} cap.</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Ocupação Global</div>
+        <div class="stat-value" style="color:${barColor(pct)}">${pct.toFixed(1)}%</div>
+        <div class="occ-bar-wrap">
+          <div class="occ-bar-bg">
+            <div class="occ-bar-fill" style="width:${Math.min(pct,100)}%;background:${barColor(pct)}"></div>
+          </div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Em Sobrecarga</div>
+        <div class="stat-value" style="color:${data.paragensEmSobrecarga.length > 0 ? 'var(--red)' : 'var(--green)'}">
+          ${data.paragensEmSobrecarga.length}
+        </div>
+        <div class="stat-sub">paragem(ns) > 60%</div>
+      </div>
+    `;
+
+        const alertBar = document.getElementById('alert-bar');
+        if (data.paragensEmSobrecarga.length > 0) {
+            const nomes = data.paragensEmSobrecarga.map(p => `${p.nome} (${p.ocupacaoPercent.toFixed(0)}%)`).join(' · ');
+            document.getElementById('alert-msg').textContent = `Sobrecarga detetada em: ${nomes}`;
+            alertBar.classList.add('visible');
+        } else {
+            alertBar.classList.remove('visible');
+        }
+    }
+
+    async function fetchParagens() {
+        const res  = await fetch(`${API}/paragens`);
+        const data = await res.json();
+
+        document.getElementById('paragens-grid').innerHTML = data.map(p => {
+            const pct = p.ocupacaoPercent;
+            return `
+        <div class="paragem-card ${cardClass(pct)}">
+          <div class="paragem-header">
+            <div>
+              <div class="paragem-nome">${p.nome}</div>
+              <div class="paragem-zona">${p.zona ?? '—'}</div>
+            </div>
+            <div class="paragem-pct ${pctColor(pct)}">${pct.toFixed(0)}%</div>
+          </div>
+          <div class="occ-bar-bg">
+            <div class="occ-bar-fill" style="width:${Math.min(pct,100)}%;background:${barColor(pct)}"></div>
+          </div>
+          <div class="paragem-nums">${p.afluenciaAtual} / ${p.capacidade} passageiros</div>
+        </div>`;
+        }).join('');
+    }
+
+    async function fetchRotas() {
+        const res  = await fetch(`${API}/rotas`);
+        const data = await res.json();
+
+        document.getElementById('rotas-list').innerHTML = data.map(r => `
+      <div class="rota-row">
+        <span class="rota-tipo">${r.tipo}</span>
+        <span class="rota-nome">${r.nome}</span>
+        <span class="rota-badge ${r.ativa ? 'badge-ativa' : 'badge-inativa'}">
+          ${r.ativa ? 'Ativa' : 'Inativa'}
+        </span>
+      </div>`).join('');
+    }
+
+    async function fetchLigacoes() {
+        const res  = await fetch(`${API}/ligacoes-temporarias`);
+        const data = await res.json();
+
+        if (data.length === 0) {
+            document.getElementById('ligacoes-list').innerHTML =
+                '<div class="empty-state">// Nenhuma ligação temporária ativa</div>';
+            return;
+        }
+
+        document.getElementById('ligacoes-list').innerHTML = data.map(l => `
+      <div class="ligacao-row">
+        <span>${l.origem}</span>
+        <span class="ligacao-arrow">──▶</span>
+        <span>${l.destino}</span>
+        <span class="ligacao-motivo">${l.motivo}</span>
+        <span class="ligacao-validade">válida até ${l.validadeAte.replace('T',' ').substring(0,16)}</span>
+      </div>`).join('');
+    }
+
+    async function fetchAll() {
+        document.getElementById('status-text').textContent = 'A atualizar...';
+        try {
+            await Promise.all([fetchEstado(), fetchParagens(), fetchRotas(), fetchLigacoes()]);
+            const now = new Date().toLocaleTimeString('pt-PT');
+            document.getElementById('last-update').textContent = `Última atualização: ${now}`;
+            document.getElementById('status-text').textContent = 'Ligado · localhost:8080';
+        } catch (e) {
+            document.getElementById('status-text').textContent = 'Erro — app a correr?';
+        }
+    }
+
+    // Arrancar e atualizar a cada 15 segundos
+    fetchAll();
+    setInterval(fetchAll, 15_000);
+</script>
+</body>
+</html>
