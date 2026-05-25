@@ -1,6 +1,8 @@
 spring:
   application:
     name: transport-graph
+    dataset-mode: 1   # 1 = demo (5 paragens) | 2 = subway only (493) | 3 = completo (1178)
+
 
   neo4j:
     uri: bolt://localhost:7687

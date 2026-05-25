@@ -1,16 +1,219 @@
+# ── BLOCO 2 — DEMO COM 5 PARAGENS ────────────────────────────
+#  Usar com dataset-mode: 1 no application.yml
+#  Paragens: DEMO_1=Times Square, DEMO_2=Grand Central,
+#            DEMO_3=Penn Station, DEMO_4=Union Square,
+#            DEMO_5=Columbus Circle
+
+### 2.1 Ver estado das 5 paragens demo
+GET http://localhost:8080/api/demo/estado
+
+### 2.2 Forçar sobrecarga em Times Square (DEMO_1)
+#  Coloca a paragem a 95% — o simulador reage em até 60 segundos
 POST http://localhost:8080/api/demo/sobrecarga
 Content-Type: application/json
 
 {
-    "paragemId": "DEMO_1"
-    }
+  "paragemId": "DEMO_1",
+  "percentagem": 95
+}
 
-
-###
+### 2.3 Criar evento manualmente em Grand Central (DEMO_2)
+#  Aplica impacto imediato de +40% na afluência
 POST http://localhost:8080/api/demo/evento
 Content-Type: application/json
 
 {
-    "nome": "KNICKS GAME",
-    "paragemId": "DEMO_3"
+  "nome": "Concerto em Madison Square Garden",
+  "paragemId": "DEMO_2",
+  "afluencia": 5000
 }
+
+### 2.4 Ver estado após sobrecarga/evento (correr após 60s)
+GET http://localhost:8080/api/demo/estado
+
+### 2.5 Pathfinding demo — caminho de DEMO_1 para DEMO_4
+#  Se há ligação temporária ativa, o caminho muda!
+GET http://localhost:8080/api/paragens/caminho?origem=DEMO_1&destino=DEMO_4
+
+### 2.6 Ver ligações temporárias criadas automaticamente
+GET http://localhost:8080/api/ligacoes-temporarias
+
+###
+
+
+# ── BLOCO 3 — DATASET REAL (subway-mode: 2 ou 3) ─────────────
+#  IDs reais do MTA:
+#    127  = Times Square-42 St
+#    631  = Grand Central-42 St
+#    R16  = Penn Station (34 St)
+#    635  = Union Square (14 St)
+#    D24  = Atlantic Av-Barclays Ctr (Brooklyn)
+#    701  = Flushing-Main St (Queens)
+#    A65  = Far Rockaway (Queens)
+
+### 3.1 Estado geral da rede completa
+GET http://localhost:8080/api/rede/estado
+
+### 3.2 Paragens em sobrecarga (>60% capacidade)
+GET http://localhost:8080/api/paragens/sobrecarga?threshold=0.6
+
+### 3.3 Pathfinding real — Times Square → Atlantic Ave Brooklyn
+#  Demonstra shortest path com dados reais de NYC
+GET http://localhost:8080/api/paragens/caminho?origem=127&destino=D24
+
+### 3.4 Pathfinding real — Grand Central → Flushing Queens
+GET http://localhost:8080/api/paragens/caminho?origem=631&destino=701
+
+### 3.5 Forçar sobrecarga em Times Square (dados reais)
+POST http://localhost:8080/api/paragens/127/simular-sobrecarga
+Content-Type: application/json
+
+{
+  "paragemId": "127",
+  "percentagem": 95
+}
+
+### 3.6 Ver paragens de Manhattan após sobrecarga
+GET http://localhost:8080/api/paragens/zona/Z_Manhattan
+
+###
+
+
+# ── BLOCO 4 — EVENTOS ────────────────────────────────────────
+
+### 4.1 Ver todos os eventos registados
+GET http://localhost:8080/api/eventos
+
+### 4.2 Ver eventos ativos agora
+GET http://localhost:8080/api/eventos/ativos
+
+### 4.3 Criar evento manualmente (modo dataset real)
+#  Cria o evento E aplica impacto imediato de +40%
+POST http://localhost:8080/api/eventos/criar
+Content-Type: application/json
+
+{
+  "nome": "Knicks Game at Madison Square Garden",
+  "tipo": "Jogo",
+  "paragemId": "127",
+  "afluenciaEsperada": 20000,
+  "duracaoHoras": 3
+}
+
+### 4.4 Simular impacto de evento já existente (E1 = Knicks)
+POST http://localhost:8080/api/eventos/E1/simular-impacto
+
+###
+
+
+# ── BLOCO 5 — ADAPTAÇÃO DINÂMICA ─────────────────────────────
+
+### 5.1 Ver ligações temporárias ativas
+GET http://localhost:8080/api/ligacoes-temporarias
+
+### 5.2 Criar ligação temporária manualmente
+#  Demonstra criação de rota alternativa entre duas paragens
+POST http://localhost:8080/api/ligacoes-temporarias
+Content-Type: application/json
+
+{
+  "origemId": "127",
+  "destinoId": "631",
+  "motivo": "Demonstração manual — desvio por sobrecarga",
+  "validadeAte": "2026-12-31T23:59:00",
+  "tempMin": 5,
+  "distancia": 800
+}
+
+### 5.3 Pathfinding APÓS criar ligação temporária
+#  Compara com o resultado do 3.3 — o caminho muda!
+GET http://localhost:8080/api/paragens/caminho?origem=127&destino=D24
+
+### 5.4 Remover ligações temporárias expiradas
+DELETE http://localhost:8080/api/ligacoes-temporarias/expiradas
+
+###
+
+
+# ── BLOCO 6 — GESTÃO DE ROTAS ────────────────────────────────
+
+### 6.1 Ver todas as rotas e estado (ativa/inativa)
+GET http://localhost:8080/api/rotas
+
+### 6.2 Desativar rota manualmente (ex: linha L por avaria)
+PATCH http://localhost:8080/api/rotas/R_L/status
+Content-Type: application/json
+
+{
+  "ativa": false,
+  "motivo": "Avaria técnica no Canarsie Tunnel"
+}
+
+### 6.3 Reativar rota
+PATCH http://localhost:8080/api/rotas/R_L/status
+Content-Type: application/json
+
+{
+  "ativa": true
+}
+
+###
+
+
+# ── BLOCO 7 — GRAFO INTERATIVO ───────────────────────────────
+
+### 7.1 Meta-grafo — schema emergente (T05)
+#  Mostra que tipos de nós existem e como se relacionam
+GET http://localhost:8080/api/grafo/meta
+
+### 7.2 Caminho visual entre duas paragens
+#  Retorna IDs dos nós E das relações no caminho
+GET http://localhost:8080/api/grafo/caminho?origem=127&destino=D24
+
+### 7.3 Adicionar paragem a uma rota
+POST http://localhost:8080/api/grafo/rotas/R_1/paragens/DEMO_1
+
+### 7.4 Remover paragem de uma rota
+DELETE http://localhost:8080/api/grafo/rotas/R_1/paragens/DEMO_1
+
+###
+
+
+# ── BLOCO 8 — DASHBOARD & GRAFO VISUAL ───────────────────────
+#  Abrir no browser:
+
+### 8.1 Dashboard em tempo real
+# http://localhost:8080/dashboard.html
+
+### 8.2 Grafo interativo (arrastar nós, ver propriedades, pathfinding)
+# http://localhost:8080/grafo.html
+
+### 8.3 Neo4j Browser (queries Cypher diretas)
+# http://localhost:7474
+
+###
+
+
+# ── QUERIES CYPHER PARA O NEO4J BROWSER ──────────────────────
+#  Copiar e colar em http://localhost:7474
+
+# Schema emergente:
+# MATCH (a)-[r]->(b)
+# RETURN DISTINCT labels(a)[0] AS De, type(r) AS Relacao, labels(b)[0] AS Para, count(r) AS Total
+# ORDER BY Total DESC
+
+# Shortest path Times Square → Brooklyn:
+# MATCH path = shortestPath((a:Paragem {id:"127"})-[:SERVE|TRANSFERENCIA|LIGACAO_TEMPORARIA*]-(b:Paragem {id:"D24"}))
+# RETURN [n IN nodes(path) | n.nome] AS Caminho, length(path) AS Saltos,
+#        reduce(t=0, r IN relationships(path) | t + coalesce(r.tempo_min,0)) AS Tempo_Min
+
+# Paragens em sobrecarga:
+# MATCH (p:Paragem) WHERE p.afluencia_atual > p.capacidade * 0.8
+# RETURN p.nome, p.afluencia_atual, p.capacidade,
+#        round(100.0 * p.afluencia_atual / p.capacidade, 1) AS ocupacao
+# ORDER BY ocupacao DESC
+
+# Ligações temporárias ativas:
+# MATCH (a:Paragem)-[lt:LIGACAO_TEMPORARIA]->(b:Paragem)
+# WHERE lt.validade > datetime()
+# RETURN a.nome AS Origem, b.nome AS Destino, lt.motivo AS Motivo

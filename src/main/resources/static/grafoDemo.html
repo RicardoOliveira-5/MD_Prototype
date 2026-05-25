@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<title>NYC Graph Demo — Neo4j</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:system-ui,sans-serif;background:#f8f7f2;color:#3d3d3a;font-size:13px;}
+canvas{display:block;}
+.tab{padding:5px 12px;border:1px solid #ccc;border-radius:8px;font-size:12px;cursor:pointer;background:#fff;color:#555;}
+.tab.on{background:#534AB7;color:#fff;border-color:#534AB7;}
+.btn{padding:6px 14px;border:1px solid #ccc;border-radius:8px;font-size:12px;cursor:pointer;background:#fff;color:#3d3d3a;}
+.btn:hover{background:#f0ede4;}
+.btn.primary{background:#185FA5;color:#fff;border-color:#185FA5;}
+.btn.danger{background:#A32D2D;color:#fff;border-color:#A32D2D;}
+select,input{font-size:12px;padding:4px 8px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#3d3d3a;width:100%;}
+.lbl{font-size:11px;color:#888;margin-bottom:3px;}
+.evbtn{width:100%;text-align:left;padding:8px 10px;margin-bottom:6px;border:1px solid #e0ddd4;border-radius:8px;font-size:12px;cursor:pointer;background:#fff;}
+.evbtn:hover{background:#f5f3ea;border-color:#bbb;}
+.badge{display:inline-block;padding:1px 7px;border-radius:8px;font-size:9px;font-weight:600;}
+.br{background:#FCEBEB;color:#A32D2D;}
+.ba{background:#FAEEDA;color:#633806;}
+.bb{background:#E6F1FB;color:#0C447C;}
+.cyph{background:#2c2c2a;border-radius:10px;padding:12px 14px;font-family:monospace;font-size:11px;color:#c2c0b6;white-space:pre;overflow-x:auto;line-height:1.6;}
+.logbox{background:#fff;border:1px solid #e0ddd4;border-radius:10px;padding:6px 10px;max-height:90px;overflow-y:auto;}
+.loge{font-size:11px;color:#666;padding:2px 0;border-bottom:1px solid #f0ede4;}
+.loge:last-child{border-bottom:none;}
+.sbar{height:5px;border-radius:3px;background:#e0ddd4;margin:2px 0 6px;}
+.sfill{height:100%;border-radius:3px;transition:width .4s;}
+.card{background:#fff;border:1px solid #e0ddd4;border-radius:12px;padding:10px;}
+.hint{font-size:10px;color:#aaa;margin-top:3px;}
+#loading{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(248,247,242,.9);display:flex;align-items:center;justify-content:center;border-radius:12px;font-size:14px;color:#888;}
+</style>
+</head>
+<body>
+<div style="max-width:900px;margin:0 auto;padding:16px">
+
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+    <div>
+      <div style="font-size:18px;font-weight:500">NYC Subway Graph</div>
+      <div style="font-size:12px;color:#888">Demo interativo Neo4j — Mobilidade Urbana</div>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <span id="statusBadge" style="font-size:11px;padding:3px 10px;border-radius:8px;background:#e8f4e8;color:#0F6E56">A carregar...</span>
+      <button class="btn primary" onclick="reloadGraph()">&#8635; Atualizar</button>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:12px;align-items:flex-start">
+
+    <!-- LEFT: Canvas + controls -->
+    <div style="flex:1;min-width:0">
+      <div style="position:relative;border:1px solid #e0ddd4;border-radius:12px;overflow:hidden;cursor:crosshair">
+        <canvas id="gc"></canvas>
+        <div id="loading">A ligar ao Neo4j...</div>
+      </div>
+      <div class="hint">Clica num nó = origem &nbsp;|&nbsp; Shift+clique = destino</div>
+
+      <div style="display:flex;gap:7px;margin-top:8px;align-items:flex-end;flex-wrap:wrap" id="sdrow">
+        <div style="flex:1;min-width:90px"><div class="lbl">Origem</div><select id="ssel"></select></div>
+        <div style="flex:1;min-width:90px"><div class="lbl">Destino</div><select id="dsel"></select></div>
+        <div style="display:flex;gap:4px;padding-bottom:1px">
+          <button class="btn primary" id="rbtn">&#9654; Correr</button>
+          <button class="btn" id="sbtn">&#9197; Passo</button>
+          <button class="btn" id="xbtn">&#8635; Reset algo</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:6px;margin-top:8px" id="atabs">
+        <button class="tab on" data-a="dijkstra">Dijkstra (tempo)</button>
+        <button class="tab" data-a="bfs">BFS (saltos)</button>
+        <button class="tab" data-a="centrality">Centralidade</button>
+      </div>
+    </div>
+
+    <!-- RIGHT: Panel -->
+    <div style="width:230px;flex-shrink:0">
+      <div style="display:flex;gap:5px;margin-bottom:8px" id="ptabs">
+        <button class="tab on" data-p="ev">Eventos</button>
+        <button class="tab" data-p="net">Rede</button>
+        <button class="tab" data-p="add">+ Nó</button>
+      </div>
+      <div id="pc" style="max-height:440px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <div class="lbl" style="margin-top:12px">Query Cypher gerada (Neo4j)</div>
+  <pre class="cyph" id="cq">-- a carregar...</pre>
+
+  <div class="lbl" style="margin-top:8px">Log</div>
+  <div class="logbox" id="lb"></div>
+
+</div>
+
+<script>
+const API = '';  // mesmo origin — Spring Boot serve em /api/...
+
+// ── Mapeamento ID → posição visual (layout NYC simplificado) ──
+const POS = {
+  '127':  {rx:.31,ry:.33}, '631':  {rx:.45,ry:.33},
+  'A28':  {rx:.25,ry:.45}, '635':  {rx:.45,ry:.48},
+  'A24':  {rx:.22,ry:.55}, 'D24':  {rx:.38,ry:.70},
+  'A38':  {rx:.44,ry:.65}, 'A36':  {rx:.53,ry:.72},
+  '126':  {rx:.55,ry:.82}, 'H19':  {rx:.30,ry:.92},
+  'H01':  {rx:.75,ry:.85}, 'A12':  {rx:.14,ry:.09},
+  '116':  {rx:.22,ry:.22}, '74':   {rx:.66,ry:.20},
+  '701':  {rx:.83,ry:.11}, 'G22':  {rx:.63,ry:.38},
+  // Dataset-mode=1 (5 demo stations)
+  'DEMO_1':{rx:.31,ry:.28}, 'DEMO_2':{rx:.50,ry:.28},
+  'DEMO_3':{rx:.31,ry:.50}, 'DEMO_4':{rx:.50,ry:.50},
+  'DEMO_5':{rx:.22,ry:.18},
+  // Nó temporário yankees
+  'TMP_YANKEES':{rx:.22,ry:.05},
+};
+// Gera posição de fallback para IDs desconhecidos (grelha)
+let _fallbackIdx = 0;
+function fallbackPos(){
+  const cols=4, i=_fallbackIdx++;
+  return {rx:.15+.18*(i%cols), ry:.1+.22*Math.floor(i/cols)};
+}
+
+// ── Estado da app ─────────────────────────────────────────────
+let ST=[], BE=[], tE=[], tN=[];   // nodes, base edges, temp edges, temp nodes
+function AN(){return[...ST,...tN];}
+function AE(){return[...BE,...tE];}
+
+const AS={algo:'dijkstra',src:0,dst:1,vis:new Set(),path:[],cur:-1,frames:[],fi:0,done:false,cv:[],_r:null};
+let ptab='ev';
+
+// ── Cores ─────────────────────────────────────────────────────
+const K={
+  nd:'#73726c', ed:'#c8c6be', tx:'#3d3d3a',
+  vi:'#7F77DD', pa:'#BA7517', sr:'#0F6E56',
+  dt:'#993C1D', ov:'#A32D2D', tm:'#185FA5',
+  ds:'#e0ddd4',
+};
+
+// ── Canvas ────────────────────────────────────────────────────
+const cv=document.getElementById('gc'), cx=cv.getContext('2d');
+const DPR=Math.min(devicePixelRatio||1,2);
+let CW,CH;
+
+function resize(){
+  const r=cv.parentElement.getBoundingClientRect();
+  CW=r.width*DPR; CH=370*DPR;
+  cv.width=CW; cv.height=CH;
+  cv.style.width=r.width+'px'; cv.style.height='370px';
+  draw();
+}
+
+function np(n){
+  const p=POS[n.id]||(n._pos=n._pos||fallbackPos());
+  const pos=POS[n.id]||n._pos;
+  return{x:pos.rx*CW*.9+CW*.04, y:pos.ry*CH*.86+CH*.07};
+}
+
+// ── Render ────────────────────────────────────────────────────
+function draw(){
+  cx.clearRect(0,0,CW,CH);
+  const nodes=AN();
+
+  AE().forEach(e=>{
+    const na=nodes[e.a],nb=nodes[e.b];
+    if(!na||!nb)return;
+    const pa=np(na),pb=np(nb);
+    let col=K.ed,lw=1*DPR,al=.5;
+    if(e.tipo==='LIGACAO_TEMPORARIA'){col=K.tm;lw=2*DPR;al=.9;cx.setLineDash([5*DPR,4*DPR]);}
+    if(AS.done&&AS.path.length>1&&AS.algo!=='centrality'){
+      for(let k=0;k<AS.path.length-1;k++)
+        if((AS.path[k]===e.a&&AS.path[k+1]===e.b)||(AS.path[k]===e.b&&AS.path[k+1]===e.a))
+          {col=K.pa;lw=3.5*DPR;al=1;}
+    }
+    cx.beginPath();cx.moveTo(pa.x,pa.y);cx.lineTo(pb.x,pb.y);
+    cx.strokeStyle=col;cx.lineWidth=lw;cx.globalAlpha=al;cx.stroke();
+    cx.setLineDash([]);cx.globalAlpha=1;
+    if(AS.algo==='dijkstra'&&e.tipo!=='LIGACAO_TEMPORARIA'){
+      const mx=(pa.x+pb.x)/2,my=(pa.y+pb.y)/2;
+      cx.font=`${8*DPR}px sans-serif`;cx.textAlign='center';
+      cx.fillStyle=K.ed;cx.globalAlpha=.8;cx.fillText(e.t,mx,my-4*DPR);cx.globalAlpha=1;
+    }
+  });
+
+  nodes.forEach((n,i)=>{
+    const p=np(n);
+    const pct=n.afluenciaAtual/Math.max(n.capacidade,1);
+    let fill=pct>.8?K.ov:K.nd, r=10*DPR, al=1;
+    if(AS.algo==='centrality'&&AS.cv.length){
+      const v=AS.cv[i]||0;r=(5+v*16)*DPR;fill=K.vi;al=.3+v*.7;
+    } else {
+      if(AS.vis.has(i)&&!AS.done)fill=K.vi;
+      if(AS.done&&AS.path.includes(i))fill=K.pa;
+      if(i===AS.src){fill=K.sr;r=13*DPR;}
+      if(i===AS.dst){fill=K.dt;r=13*DPR;}
+      if(AS.cur===i&&!AS.done)r=Math.max(r,15*DPR);
+    }
+    cx.globalAlpha=al;
+    cx.beginPath();cx.arc(p.x,p.y,r,0,Math.PI*2);
+    cx.fillStyle=fill;cx.fill();
+    cx.strokeStyle=n.temp?K.tm:fill;cx.lineWidth=1.5*DPR;
+    if(n.temp)cx.setLineDash([3*DPR,3*DPR]);
+    cx.stroke();cx.setLineDash([]);cx.globalAlpha=1;
+    const lbl=n.nome.length>13?n.nome.slice(0,12)+'…':n.nome;
+    cx.font=`${9.5*DPR}px sans-serif`;cx.textAlign='center';cx.fillStyle=K.tx;
+    cx.fillText(lbl,p.x,p.y+r+11*DPR);
+    if(AS.algo!=='centrality'){
+      const bw=26*DPR,bh=4*DPR,bx=p.x-bw/2,by=p.y+r+17*DPR;
+      cx.fillStyle='#e0ddd4';cx.fillRect(bx,by,bw,bh);
+      const bc=pct>.8?K.ov:pct>.6?'#BA7517':'#0F6E56';
+      cx.fillStyle=bc;cx.fillRect(bx,by,Math.min(bw,bw*pct),bh);
+    }
+  });
+
+  // Legenda
+  const items=[['Origem',K.sr],['Destino',K.dt],['Visitado',K.vi],['Caminho',K.pa],['Temp.',K.tm],['Sobrecar.',K.ov]];
+  let lox=10*DPR,ly=CH-14*DPR;
+  cx.font=`${8.5*DPR}px sans-serif`;
+  items.forEach(([lb,col])=>{
+    cx.fillStyle=col;cx.beginPath();cx.arc(lox+4*DPR,ly,4*DPR,0,Math.PI*2);cx.fill();
+    cx.fillStyle=K.tx;cx.textAlign='left';cx.fillText(lb,lox+11*DPR,ly+4*DPR);
+    lox+=(lb.length*5.5+20)*DPR;
+  });
+}
+
+// ── Algoritmos (lado do cliente) ──────────────────────────────
+
+function buildAdj(){
+  const n=AN().length, a=Array.from({length:n},()=>[]);
+  AE().forEach(e=>{
+    if(e.a<n&&e.b<n){a[e.a].push({to:e.b,t:e.t});a[e.b].push({to:e.a,t:e.t});}
+  });
+  return a;
+}
+
+function dijk(s,d){
+  const n=AN().length,a=buildAdj(),dist=Array(n).fill(Infinity),prev=Array(n).fill(-1),vis=new Set(),fr=[],pq=[[0,s]];
+  dist[s]=0;
+  while(pq.length){
+    pq.sort((x,y)=>x[0]-y[0]);const[dd,u]=pq.shift();
+    if(vis.has(u))continue;vis.add(u);
+    fr.push({vis:new Set(vis),cur:u,note:`Dijkstra: visitar ${AN()[u].nome} — dist acum. ${dd} min`});
+    if(u===d)break;
+    for(const{to,t} of a[u])if(dist[u]+t<dist[to]){dist[to]=dist[u]+t;prev[to]=u;pq.push([dist[to],to]);}
+  }
+  const p=[];let c=d;while(c!==-1){p.unshift(c);c=prev[c];}
+  return{frames:fr,path:p,dist:dist[d]};
+}
+
+function bfsAlgo(s,d){
+  const n=AN().length,a=buildAdj(),vis=new Set([s]),prev=Array(n).fill(-1),q=[s],fr=[];
+  while(q.length){
+    const u=q.shift();
+    fr.push({vis:new Set(vis),cur:u,note:`BFS: explorar ${AN()[u].nome}`});
+    if(u===d)break;
+    for(const{to} of a[u])if(!vis.has(to)){vis.add(to);prev[to]=u;q.push(to);}
+  }
+  const p=[];let c=d;while(c!==-1){p.unshift(c);c=prev[c];}
+  return{frames:fr,path:p};
+}
+
+let tmr=null;
+function rst(){clearTimeout(tmr);tmr=null;AS.vis=new Set();AS.path=[];AS.cur=-1;AS.frames=[];AS.fi=0;AS.done=false;AS.cv=[];AS._r=null;draw();}
+
+function run(){
+  rst();
+  if(AS.algo==='centrality'){
+    const a=buildAdj(),n=AN();
+    const deg=n.map((_,i)=>a[i].length),mx=Math.max(...deg)||1;
+    AS.cv=deg.map(d=>d/mx);AS.done=true;draw();
+    const top=AS.cv.map((v,i)=>({v,i})).sort((a,b)=>b.v-a.v).slice(0,3);
+    log(`Centralidade — top 3: ${top.map(t=>AN()[t.i].nome).join(', ')}`);
+    setCypher('centrality');return;
+  }
+  setCypher(AS.algo);
+  AS._r=AS.algo==='dijkstra'?dijk(AS.src,AS.dst):bfsAlgo(AS.src,AS.dst);
+  AS.frames=AS._r.frames;
+  log(`${AS.algo==='dijkstra'?'Dijkstra':'BFS'}: ${AN()[AS.src].nome} → ${AN()[AS.dst].nome}`);
+  tick();
+}
+
+function tick(){
+  if(AS.fi>=AS.frames.length){fin();return;}
+  const f=AS.frames[AS.fi++];AS.vis=f.vis;AS.cur=f.cur;draw();log(f.note);
+  tmr=setTimeout(tick,160);
+}
+
+function fin(){
+  AS.done=true;AS.path=AS._r.path;AS.cur=-1;draw();
+  const pn=AS._r.path.map(i=>AN()[i].nome).join(' → ');
+  const ex=AS.algo==='dijkstra'?` | ${AS._r.dist} min`:` | ${AS._r.path.length-1} salto(s)`;
+  log(`✓ ${pn}${ex}`);
+}
+
+function step(){
+  if(AS.algo==='centrality'){run();return;}
+  if(!AS.frames.length){
+    setCypher(AS.algo);
+    AS._r=AS.algo==='dijkstra'?dijk(AS.src,AS.dst):bfsAlgo(AS.src,AS.dst);
+    AS.frames=AS._r.frames;log('Modo passo-a-passo ativo');
+  }
+  if(AS.fi>=AS.frames.length){if(!AS.done)fin();return;}
+  const f=AS.frames[AS.fi++];AS.vis=f.vis;AS.cur=f.cur;draw();log(f.note);
+}
+
+// ── Cypher queries ────────────────────────────────────────────
+
+const CYPHQ = {
+  dijkstra: (s,d)=>
+`// Shortest Path — Dijkstra nativo Neo4j
+MATCH path = shortestPath(
+  (a:Paragem {id: '${s}'})-[:SERVE|TRANSFERENCIA|LIGACAO_TEMPORARIA*]-(b:Paragem {id: '${d}'})
+)
+RETURN [n IN nodes(path) | n.nome] AS Paragens,
+       length(path)                AS Saltos,
+       reduce(t=0, r IN relationships(path)
+         | t + coalesce(r.tempo_min, 0)) AS Tempo_Min;`,
+
+  bfs: (s,d)=>
+`// BFS — menor número de transferências
+MATCH path = shortestPath(
+  (a:Paragem {id: '${s}'})-[:SERVE|TRANSFERENCIA*]-(b:Paragem {id: '${d}'})
+)
+RETURN [n IN nodes(path) | n.nome] AS Paragens,
+       length(path)                AS Transferencias;`,
+
+  centrality: ()=>
+`// Centralidade de grau — estações mais conectadas
+MATCH (p:Paragem)-[r:SERVE|TRANSFERENCIA]-()
+RETURN p.nome AS Estacao, count(r) AS Grau
+ORDER BY Grau DESC LIMIT 10;`,
+
+  ev_concert: ()=>
+`// Sobrecarga após concerto MSG
+MATCH (p:Paragem)
+WHERE p.id IN ['A28','127']
+SET p.afluencia_atual = CASE p.id
+  WHEN 'A28' THEN toInteger(p.capacidade * 0.92)
+  WHEN '127' THEN toInteger(p.capacidade * 0.77)
+  ELSE p.afluencia_atual END;
+
+// Vizinhas com espaço disponível
+MATCH (p:Paragem {id:'A28'})-[:SERVE]->(v:Paragem)
+WHERE p.afluencia_atual > p.capacidade * 0.8
+  AND v.afluencia_atual < v.capacidade * 0.6
+RETURN v.nome AS Alternativa;`,
+
+  ev_nye: ()=>
+`// NYE: Times Square a 100% + LIGACAO_TEMPORARIA
+MATCH (p:Paragem {id: '127'})
+SET p.afluencia_atual = p.capacidade;
+
+MATCH (a:Paragem {id:'127'}), (b:Paragem {id:'A24'})
+CREATE (a)-[:LIGACAO_TEMPORARIA {
+  motivo:   'NYE Times Square - Bypass Crítico',
+  validade:  datetime() + duration({hours: 4}),
+  tempo_min: 6
+}]->(b);
+
+// Pathfinding já inclui a nova aresta automaticamente
+MATCH path = shortestPath(
+  (a:Paragem {id:'127'})-[:SERVE|LIGACAO_TEMPORARIA*]-(b:Paragem {id:'A36'})
+)
+RETURN [n IN nodes(path) | n.nome], length(path);`,
+
+  ev_avaria_l: ()=>
+`// Desativar Linha L por avaria
+MATCH (r:Rota {id: 'R_L'})
+SET r.ativa = false,
+    r.motivo_desativacao = 'Avaria — Canarsie Tunnel';
+
+// Penalizar peso da aresta congestionada
+MATCH (a:Paragem)-[s:SERVE]->(b:Paragem)
+WHERE a.id IN ['635','A24'] AND b.id IN ['635','A24']
+SET s.peso = 999;
+
+// Dijkstra recalcula evitando aresta com peso alto
+MATCH path = shortestPath(
+  (a:Paragem {id:'635'})-[:SERVE|TRANSFERENCIA*]-(b:Paragem {id:'A24'})
+)
+RETURN [n IN nodes(path) | n.nome], length(path);`,
+
+  ev_yankees: ()=>
+`// Adicionar estação temporária ao grafo
+CREATE (novo:Paragem {
+  id: 'TMP_YANKEES', nome: '161st Yankee Stadium',
+  lat: 40.8275, lon: -73.9259,
+  capacidade: 5000, afluencia_atual: 4700, temp: true
+});
+
+MATCH (est:Paragem {id:'TMP_YANKEES'}), (h:Paragem {id:'A12'})
+CREATE (est)-[:LIGACAO_TEMPORARIA {
+  motivo: 'Yankees Game', tempo_min: 12,
+  validade: datetime() + duration({hours: 5})
+}]->(h);`,
+
+  ev_rush: ()=>
+`// Rush Hour: +40% em toda a rede + penalizar arestas
+MATCH (p:Paragem) WHERE p.id IN ['127','631','A28','635']
+SET p.afluencia_atual = toInteger(p.afluencia_atual * 1.4);
+
+MATCH (p:Paragem)-[s:SERVE]->()
+WHERE p.afluencia_atual > p.capacidade * 0.8
+SET s.peso = s.peso * 3
+RETURN count(s) AS Arestas_Penalizadas;
+
+// Ocupação por Borough
+MATCH (p:Paragem)-[:PERTENCE_A]->(z:Zona)
+RETURN z.nome AS Borough,
+       round(avg(100.0*p.afluencia_atual/p.capacidade),1) AS 'Ocup %'
+ORDER BY 'Ocup %' DESC;`,
+
+  ev_reset: ()=>
+`// Resetar rede ao estado inicial
+MATCH (p:Paragem) WHERE p.id IN $ids
+SET p.afluencia_atual = toInteger(p.capacidade * 0.30);
+
+MATCH ()-[lt:LIGACAO_TEMPORARIA]->()
+WHERE lt.motivo CONTAINS 'NYE' OR lt.motivo CONTAINS 'Bypass'
+   OR lt.motivo CONTAINS 'Yankees' OR lt.motivo CONTAINS 'manual'
+DELETE lt;
+
+MATCH (p:Paragem) WHERE p.temp = true DETACH DELETE p;
+
+MATCH (r:Rota) SET r.ativa = true, r.motivo_desativacao = null;`,
+};
+
+function setCypher(type){
+  const nodes=AN();
+  const sid=nodes[AS.src]?.id||'?', did=nodes[AS.dst]?.id||'?';
+  const fn=CYPHQ[type];
+  document.getElementById('cq').textContent=fn?fn(sid,did):(CYPHQ.dijkstra(sid,did));
+}
+
+// ── Carregar grafo da API ─────────────────────────────────────
+
+async function reloadGraph(){
+  document.getElementById('loading').style.display='flex';
+  document.getElementById('statusBadge').textContent='A ligar ao Neo4j...';
+  document.getElementById('statusBadge').style.background='#FAEEDA';
+  document.getElementById('statusBadge').style.color='#633806';
+
+  try {
+    const res=await fetch(`${API}/api/simulacao/grafo`);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data=await res.json();
+
+    if(!data.nodes||data.nodes.length===0){
+      log('⚠ Nenhuma estação encontrada. Verifica o dataset-mode no application.yml');
+      document.getElementById('statusBadge').textContent='Sem dados';
+      return;
+    }
+
+    // Mapear nós
+    _fallbackIdx=0;
+    ST=data.nodes.map(n=>({
+      id:n.id, nome:n.nome||n.id,
+      capacidade:n.capacidade||1000, afluenciaAtual:n.afluenciaAtual||0,
+      zona:n.zona
+    }));
+
+    // Mapear arestas (idx baseado em array ST)
+    const idxOf=id=>ST.findIndex(n=>n.id===id);
+    BE=data.edges
+      .map(e=>({a:idxOf(e.origem),b:idxOf(e.destino),t:e.tempoMin||5,tipo:e.tipo||'SERVE'}))
+      .filter(e=>e.a>=0&&e.b>=0&&e.a!==e.b);
+
+    // Separar temp edges
+    tE=[]; tN=[];
+    // (ligações temporárias já vêm no BE com tipo=LIGACAO_TEMPORARIA)
+
+    rst();
+    popSels();
+    rp();
+    draw();
+
+    document.getElementById('loading').style.display='none';
+    document.getElementById('statusBadge').textContent=`${ST.length} estações | ${BE.length} ligações`;
+    document.getElementById('statusBadge').style.background='#E1F5EE';
+    document.getElementById('statusBadge').style.color='#0F6E56';
+
+    log(`Grafo carregado: ${ST.length} estações, ${BE.length} ligações`);
+    setCypher('dijkstra');
+
+  } catch(err){
+    document.getElementById('loading').style.display='none';
+    document.getElementById('statusBadge').textContent='Erro de ligação';
+    document.getElementById('statusBadge').style.background='#FCEBEB';
+    document.getElementById('statusBadge').style.color='#A32D2D';
+    log(`Erro: ${err.message} — Verifica que o servidor está em localhost:8080`);
+    document.getElementById('cq').textContent='-- Erro: não foi possível ligar a /api/simulacao/grafo\n-- Confirma que o servidor Spring Boot está a correr.';
+  }
+}
+
+// ── Eventos ───────────────────────────────────────────────────
+
+const EVTS=[
+  {id:'concert',nm:'Concerto no MSG',  desc:'Penn +92%, Times Sq +77%',cl:'br',bl:'alto',cq:'ev_concert'},
+  {id:'nye',    nm:'NYE Times Square', desc:'100% + LIGACAO_TEMPORARIA criada',cl:'br',bl:'alto',cq:'ev_nye'},
+  {id:'avaria_l',nm:'Avaria Linha L',  desc:'Union Sq ↔ 14th St desativada',cl:'ba',bl:'médio',cq:'ev_avaria_l'},
+  {id:'yankees',nm:'Jogo Yankees',     desc:'Nó 161st Stadium adicionado',cl:'ba',bl:'médio',cq:'ev_yankees'},
+  {id:'rush',   nm:'Rush Hour',        desc:'+40% afluência em toda a rede',cl:'ba',bl:'médio',cq:'ev_rush'},
+  {id:'reset',  nm:'Resetar rede',     desc:'Repõe estado inicial',cl:'bb',bl:'reset',cq:'ev_reset'},
+];
+
+async function doEv(id){
+  const ev=EVTS.find(e=>e.id===id);
+  if(!ev)return;
+  log(`A aplicar evento: ${ev.nm}...`);
+  setCypher(ev.cq);
+  try{
+    const res=await fetch(`${API}/api/simulacao/evento/${id}`,{method:'POST'});
+    const data=await res.json();
+    if(data.erro){log(`Erro: ${data.erro}`);return;}
+    log(`✓ ${ev.nm} aplicado no Neo4j`);
+    if(data.ligacaoTemporaria) log(`→ ${data.ligacaoTemporaria}`);
+    if(data.novoNo) log(`→ Nó criado: ${data.novoNo}`);
+    await reloadGraph();
+    rst();
+  }catch(err){
+    log(`Erro ao chamar API: ${err.message}`);
+  }
+}
+
+function rp(){
+  const b=document.getElementById('pc');
+  if(ptab==='ev'){
+    b.innerHTML=EVTS.map(e=>`
+      <button class="evbtn" onclick="doEv('${e.id}')">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong>${e.nm}</strong>
+          <span class="badge ${e.cl}">${e.bl}</span>
+        </div>
+        <div style="font-size:10px;color:#888;margin-top:2px">${e.desc}</div>
+      </button>`).join('');
+  } else if(ptab==='net'){
+    const nodes=AN();
+    b.innerHTML='<div style="padding:2px">'+
+      `<div style="font-size:11px;color:#888;font-weight:500;margin-bottom:7px">${nodes.length} estações na rede</div>`+
+      nodes.map(n=>{
+        const pct=Math.round(n.afluenciaAtual/Math.max(n.capacidade,1)*100);
+        const bc=pct>80?'#A32D2D':pct>60?'#BA7517':'#0F6E56';
+        return `<div><div style="display:flex;justify-content:space-between;font-size:10.5px">
+          <span>${n.nome}</span><span style="color:${bc};font-weight:500">${pct}%</span></div>
+          <div class="sbar"><div class="sfill" style="width:${pct}%;background:${bc}"></div></div></div>`;
+      }).join('')+
+      (BE.filter(e=>e.tipo==='LIGACAO_TEMPORARIA').length?
+        `<div style="margin-top:6px;font-size:10px;color:#185FA5">● ${BE.filter(e=>e.tipo==='LIGACAO_TEMPORARIA').length} ligação(ões) temporária(s)</div>`:'')
+      +'</div>';
+  } else {
+    const nodes=AN();
+    b.innerHTML=`<div style="padding:2px">
+      <div style="font-size:11px;color:#888;font-weight:500;margin-bottom:8px">Adicionar nó temporário</div>
+      <div class="lbl">Nome da estação</div>
+      <input id="nn" type="text" placeholder="ex: Hudson Yards" style="margin-bottom:7px">
+      <div class="lbl">Ligar a estação (ID)</div>
+      <select id="nl" style="margin-bottom:7px">${nodes.map(n=>`<option value="${n.id}">${n.nome}</option>`).join('')}</select>
+      <div class="lbl">Tempo de ligação (min)</div>
+      <input id="nt" type="number" value="8" min="1" max="99" style="margin-bottom:7px">
+      <div class="lbl">Motivo</div>
+      <input id="nr" type="text" placeholder="ex: Evento especial" style="margin-bottom:10px">
+      <button class="btn primary" style="width:100%;margin-bottom:14px" onclick="doAddN()">+ Adicionar nó ao Neo4j</button>
+
+      <div style="border-top:1px solid #e0ddd4;padding-top:10px">
+      <div style="font-size:11px;color:#888;font-weight:500;margin-bottom:7px">Ligação temporária direta</div>
+      <div class="lbl">De</div>
+      <select id="lf" style="margin-bottom:6px">${nodes.map(n=>`<option value="${n.id}">${n.nome}</option>`).join('')}</select>
+      <div class="lbl">Para</div>
+      <select id="lt" style="margin-bottom:6px">${nodes.map(n=>`<option value="${n.id}">${n.nome}</option>`).join('')}</select>
+      <div class="lbl">Tempo (min)</div>
+      <input id="ll" type="number" value="6" min="1" max="99" style="margin-bottom:8px">
+      <button class="btn" style="width:100%;color:#185FA5;border-color:#185FA5" onclick="doAddL()">+ Criar LIGACAO_TEMPORARIA</button>
+      </div></div>`;
+  }
+}
+
+async function doAddN(){
+  const nm=(document.getElementById('nn')?.value||'').trim();
+  const li=document.getElementById('nl')?.value||'';
+  const t=parseInt(document.getElementById('nt')?.value)||8;
+  const reason=document.getElementById('nr')?.value||'Evento';
+  if(!nm){log('Insere um nome');return;}
+  try{
+    const res=await fetch(`${API}/api/simulacao/no-temporario`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({nome:nm,ligadaA:li,tempoMin:t,motivo:reason})
+    });
+    const data=await res.json();
+    log(`✓ Nó "${nm}" criado no Neo4j (ID: ${data.novoId})`);
+    log(`→ ${data.cypher}`);
+    await reloadGraph();
+  }catch(err){log(`Erro: ${err.message}`);}
+}
+
+async function doAddL(){
+  const fr=document.getElementById('lf')?.value||'';
+  const to=document.getElementById('lt')?.value||'';
+  const t=parseInt(document.getElementById('ll')?.value)||6;
+  if(fr===to){log('Origem = Destino');return;}
+  try{
+    const res=await fetch(`${API}/api/simulacao/ligacao`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({origemId:fr,destinoId:to,tempoMin:t,motivo:'Ligação manual'})
+    });
+    log(`✓ LIGACAO_TEMPORARIA criada: ${fr} → ${to} (${t} min)`);
+    await reloadGraph();
+  }catch(err){log(`Erro: ${err.message}`);}
+}
+
+// ── Selects ───────────────────────────────────────────────────
+function popSels(){
+  const nodes=AN();
+  ['ssel','dsel'].forEach(id=>{
+    const el=document.getElementById(id);if(!el)return;
+    const prev=el.value;
+    el.innerHTML=nodes.map((n,i)=>`<option value="${i}">${n.nome}</option>`).join('');
+    if(prev&&+prev<nodes.length)el.value=prev;
+  });
+  if(ST.length>1){
+    document.getElementById('ssel').value='0';
+    document.getElementById('dsel').value=String(Math.min(ST.length-1,5));
+    AS.src=0; AS.dst=Math.min(ST.length-1,5);
+  }
+}
+
+// ── Log ───────────────────────────────────────────────────────
+function log(msg){
+  const b=document.getElementById('lb');
+  const el=document.createElement('div');el.className='loge';
+  const d=new Date(),hh=String(d.getHours()).padStart(2,'0'),mm=String(d.getMinutes()).padStart(2,'0'),ss=String(d.getSeconds()).padStart(2,'0');
+  el.textContent=`${hh}:${mm}:${ss} — ${msg}`;
+  b.insertBefore(el,b.firstChild);
+  while(b.children.length>8)b.removeChild(b.lastChild);
+}
+
+// ── Event listeners ───────────────────────────────────────────
+document.getElementById('ssel').onchange=e=>{AS.src=+e.target.value;rst();setCypher(AS.algo);};
+document.getElementById('dsel').onchange=e=>{AS.dst=+e.target.value;rst();setCypher(AS.algo);};
+document.getElementById('rbtn').onclick=run;
+document.getElementById('sbtn').onclick=step;
+document.getElementById('xbtn').onclick=()=>{rst();log('Algoritmo resetado');};
+
+document.querySelectorAll('#atabs .tab').forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll('#atabs .tab').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');AS.algo=t.dataset.a;
+    document.getElementById('sdrow').style.display=AS.algo==='centrality'?'none':'flex';
+    rst();setCypher(AS.algo);
+  };
+});
+
+document.querySelectorAll('#ptabs .tab').forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll('#ptabs .tab').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');ptab=t.dataset.p;rp();
+  };
+});
+
+cv.onclick=e=>{
+  const r=cv.getBoundingClientRect(),dpr=cv.width/r.width;
+  const px=(e.clientX-r.left)*dpr,py=(e.clientY-r.top)*dpr;
+  const nodes=AN();let best=-1,bd=18*DPR;
+  nodes.forEach((n,i)=>{const p=np(n),d=Math.hypot(p.x-px,p.y-py);if(d<bd){bd=d;best=i;}});
+  if(best<0)return;
+  if(!e.shiftKey){AS.src=best;document.getElementById('ssel').value=best;}
+  else{AS.dst=best;document.getElementById('dsel').value=best;}
+  rst();setCypher(AS.algo);
+  log(`${!e.shiftKey?'Origem':'Destino'}: ${nodes[best].nome}`);
+};
+
+window.addEventListener('resize',()=>{resize();draw();});
+resize();
+
+// Iniciar
+reloadGraph();
+</script>
+</body>
+</html>
